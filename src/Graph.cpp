@@ -1,4 +1,4 @@
-#include "Graph.h"
+#include "../include/Graph.h"
 #include <vector>
 #include <unordered_set>
 #include <cassert>
@@ -68,7 +68,15 @@ void Graph::clear() {
 //}
 
 const Graph::Neighbors& Graph::neighbors(int v) const {
+    static const Neighbors emp;
+    if (!hasNode(v)) { return emp; }
     return ng.at(v);
+}
+
+const int Graph::neighbors_node(int v, int index) const {
+    Edge e = ng.at(v)[index];
+    if (e.getX() == v) { return e.getY(); }
+    else return e.getX();
 }
 
 
@@ -89,7 +97,7 @@ void Graph::add_attributes(int v, Attributes atts) {
 void Graph::remove_attribute(int v, Attributes atts) {
     if (attr.find(v) != attr.end()) {
         for (const auto& att : atts) {
-            attr[v].erase(att);  // 从节点 v 的属性集合中移除指定属性
+            attr[v].erase(att);  // �ӽڵ� v �����Լ������Ƴ�ָ������
         }
     }
 }
@@ -144,13 +152,13 @@ void Graph::deleteEdge(Edge e) {
             assert(it != ng[x].end());
             ng[x].erase(it);
         }
-        
+
         if (ng.find(y) != ng.end()) {
             auto it = find(ng[y].begin(), ng[y].end(), e);
             assert(it != ng[y].end());
             ng[y].erase(it);
         }
-        
+
     }
 
 }
@@ -195,6 +203,8 @@ bool Graph::hasNode(int v) const {
 bool Graph::addNode(int v) {
     if (v > maxN)
         maxN = v;
+    // nodeIds.push_back(v);
+    // idToIndex[v] = nodeIds.size() - 1; // ���ڵ� ID ӳ�䵽������
     return nodes.insert(v).second;
 }
 
@@ -205,6 +215,17 @@ int Graph::getMaxN() const {
 void Graph::unionGraph(const Graph& g) {
     for (Edge e : g.getEdges())
         addEdge(e);
+}
+
+void Graph::generateIndices() {
+    nodeIds.clear();
+    idToIndex.clear();
+    int index = 0;
+    for (int nodeId : nodes) {
+        nodeIds.push_back(nodeId); // �������ڵ� ID ��ӳ��
+        idToIndex[nodeId] = index; // �ڵ� ID ��������ӳ��
+        index++;
+    }
 }
 
 int Graph::getN() const {
@@ -262,19 +283,19 @@ void Graph::load_graph(std::string data_path) {
     std::string line;
 
     while (std::getline(infile, line)) {
-        // 移除行中的 # 符号
+        // �Ƴ����е� # ����
         line.erase(std::remove(line.begin(), line.end(), '#'), line.end());
 
         std::istringstream iss(line);
         int num1, num2;
 
-        // 尝试读取两个整数
+        // ���Զ�ȡ��������
         if (!(iss >> num1 >> num2)) {
             std::cerr << "Error reading line: " << line << std::endl;
-            continue; // 跳过格式不正确的行
+            continue; // ������ʽ����ȷ����
         }
 
-        // 正确读取时，处理这些数据
+        // ��ȷ��ȡʱ��������Щ����
         add_edge(num1, num2);
     }
 
@@ -337,13 +358,23 @@ std::vector<int> Graph::getNeighborIDs(int v) const {
     return neighborIDs;
 }
 
+std::vector<int> Graph::getNeighborIndices(int v) const {
+    std::vector<int> neighborIndices;
+    const Neighbors& edges = neighbors(v);
+    for (const Edge& edge : edges) {
+        int neighborID = (edge.getX() == v) ? edge.getY() : edge.getX();
+        neighborIndices.push_back(idToIndex.at(neighborID));
+    }
+    return neighborIndices;
+}
+
 // std::vector<int> Graph::getNeighborIDs(int v) const {
 //     std::vector<int> neighborIDs;
 
-//     // 假设 graphData 是存储邻接表的 unordered_map
+//     // ���� graphData �Ǵ洢�ڽӱ��� unordered_map
 //     if (graphData.find(v) == graphData.end()) {
 //         std::cerr << "Warning: Node " << v << " not found in the graph." << std::endl;
-//         return neighborIDs;  // 返回空的邻居列表
+//         return neighborIDs;  // ���ؿյ��ھ��б�
 //     }
 
 //     const Neighbors& edges = neighbors(v);

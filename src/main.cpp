@@ -5,143 +5,112 @@
 #include <string>
 #include <ctime>
 #include <set>
-#include "Graph.h"
-#include "Utils.h"
-#include "Kcore.h"
+#include "../include/Graph.h"
+#include "../include/Utils.h"
+#include "../include/Kcore.h"
+#include <chrono>
+#include <thread>
+#include <future>
 
 using namespace std;
 
 int main()
 {
-    // ofstream total_output_file("dblp2017/6-core/output_6_baselines23.txt"); //baselines
-    // ofstream total_output_file("dblp2015/2-core/output_2_fp_combined_baselines.txt"); //fptree
-    ofstream total_output_file("case/private/case_output_35914_ppgraph_3core.txt"); //fptree
-    // ofstream total_output_file("/Users/beechan/Desktop/ppkcore/scalability/160w"); //fptree //sca
+    ofstream total_output_file("test/Output_3_fp_5.txt");
 
-
-    Graph* graph = new Graph(); 
+    Graph* graph = new Graph();
 
     //public graph data
     printf("start loading public data...... ");
-    graph->load_graph("/Users/beechan/Desktop/ppkcore/data/dblp2017/public_graph.txt");
-    graph->load_attribute("/Users/beechan/Desktop/ppkcore/data/dblp2017/public_attribute.txt");
-    // graph->load_graph("/Users/beechan/Desktop/ppkcore/scalability/160w/public_graph.txt");
-    // graph->load_attribute("/Users/beechan/Desktop/ppkcore/scalability/160w/public_attribute.txt");
+    graph->load_graph("test/public_graph.txt");
+    graph->load_attribute("test/public_attribute.txt");
     printf("public graph loaded \n");
 
-    //private data
+    //private graph data
     printf("start loading private index...... ");
     unordered_map<int, vector<PrivateEntry>> private_index;
-    // load_private_file("dblp2015/combined_baselines_2015.txt", private_index);  //fptree
-    load_private_file("/Users/beechan/Desktop/ppkcore/case/private/35914.txt", private_index);  //fptree
-    // load_private_file("data/baselines_test19_1.txt", private_index); //baselines
+    load_private_file("test/test_private.txt", private_index);
     printf("private index loaded \n");
-   
-    //int query_node = 933251;
-    int query_node = 35914;
-    //int k = 2;
-    int k = 3;
-    printf("query node is: %d, k=%d \n",query_node,k);
 
-    //construct pp graph
-    if (private_index.find(query_node) == private_index.end()) {
-        std::cerr << "Query node " << query_node << " not found in private_index." << std::endl;
-        return -1; // 或者其他错误处理
-    }
+    //public graph index
+    Kcore* kcore = new Kcore(graph);
+    kcore->read_attrmap("test/attribute_index.txt");
+    kcore->read_treeIndex("test/tree_index.txt");
 
-    vector<PrivateEntry> query_private_entry = private_index[query_node];
-    for (auto item : query_private_entry) {
-        graph->addEdge(query_node, item.number);
-        graph->add_attributes(item.number, item.tags);
-    }
+    set<Edge> tempEdges;
+    unordered_map<int, unordered_set<string>> tempAttributes;
+    std::vector<std::string> allResults;
+    for (const auto& pair : private_index)
+    {
+        int query_node = pair.first;
+        const vector<PrivateEntry>& query_private_entry = pair.second;
 
-    // set<Edge> tempEdges;
-    // unordered_map<int, unordered_set<string>> tempAttributes;
+        size_t private_edge_count = query_private_entry.size();
 
-    // for (const auto& pair : private_index)
-    // {
-    //     int query_node = pair.first;
-    //     const vector<PrivateEntry>& query_private_entry = pair.second;
+        // std::ofstream output_file("test_icde/output_5_fp_" + std::to_string(query_node) + ".txt");  //fptree
 
-    //     size_t private_edge_count = query_private_entry.size();
+        unordered_set<string> query_node_attributes;
+        for (const auto& item : query_private_entry) {
+            if (item.number == query_node) {
+                query_node_attributes.insert(item.tags.begin(), item.tags.end());
+            }
+        }
+        
+        // add private attribute
+        graph->add_attributes(query_node, query_node_attributes);
 
-    //     // std::ofstream output_file("dblp2013/3-core/output_3_fp_" + std::to_string(query_node) + ".txt");  //fptree
-    //     // std::ofstream output_file("dblp2017/6-core/output_6_" + std::to_string(query_node) + ".txt");  //baselines
+        const unordered_set<string>& updated_query_node_attributes = graph->attributes(query_node);
+        
+        for (const auto& item : query_private_entry) {
 
-    //     for (const auto& item : query_private_entry) {
-    //         Edge e(query_node, item.number);
-    //         graph->addEdge(query_node, item.number);
-    //         graph->add_attributes(item.number, item.tags);
+            if (item.number == query_node) {
+                continue;
+            }
 
-    //         tempEdges.insert(e);
-    //         tempAttributes[item.number].insert(item.tags.begin(), item.tags.end());
-    //     }
+            Edge e(query_node, item.number);
+            graph->addEdge(query_node, item.number);
 
-        // int k = 4;
-        printf("query node is: %d, k=%d \n", query_node, k);
-        Kcore* kcore = new Kcore(graph, query_node, k);  //fptree?
+            unordered_set<string> filtered_attributes;
+            for (const auto& tag : item.tags) {
+                if (updated_query_node_attributes.find(tag) != updated_query_node_attributes.end()) {
+                    filtered_attributes.insert(tag);
+                }
+            }
 
-        // size_t success_d1, community1, success_d2, community2;    //baselines
-        // double duration1 = kcore->baseline1(output_file, success_d1, community1);  //baselines
-        // double duration2 = kcore->baseline2(output_file, success_d2, community2);  //baselines
-        // auto [duration, max_attributes, community] = kcore->fptree(k, "dblp2013/fp_index_new/fp_tree_output_" + std::to_string(query_node) + ".txt",
-        //  "dblp2013/fp_index_new/ncl_output_" + std::to_string(query_node) + ".txt",
-        //  "dblp2013/output_2_fp_" + std::to_string(query_node) + ".txt");  //fptree
+            graph->add_attributes(item.number, filtered_attributes);
 
-
-        try {
-            // auto [duration, max_attributes, community] = kcore->fptree(k, "dblp2015/fp_index_new/fp_tree_output_" + std::to_string(query_node) + ".txt",
-            // "dblp2015/fp_index_new/ncl_output_" + std::to_string(query_node) + ".txt", "dblp2015/2-core/output_2_fp_" + std::to_string(query_node) + ".txt");  // fptree
-            
-            auto [duration, max_attributes, community] = kcore->fptree(k, "/Users/beechan/Desktop/ppkcore/case/private/fp_tree_output_" + std::to_string(query_node) + ".txt",
-            "/Users/beechan/Desktop/ppkcore/case/private/ncl_output_" + std::to_string(query_node) + ".txt", "/Users/beechan/Desktop/ppkcore/case/private/nam_output_" + std::to_string(query_node) + ".txt");  // fptree
-  
-            total_output_file << "Query node: " << query_node 
-                          // << ", private edges: " << private_edge_count 
-                          << ", fptree cost: " << duration 
-                          << " seconds, max_attributes: " << max_attributes 
-                          << ", community: " << community << "\n";
-            //fptree
-            
-        } catch (const std::out_of_range& e) {
-            std::cerr << "Error: std::out_of_range exception caught: " << e.what() << std::endl;
-            // 处理异常，如日志记录或其他恢复措施
-        } catch (const std::exception& e) {
-            std::cerr << "Error: Exception caught: " << e.what() << std::endl;
-            // 捕获所有其他可能的异常
+            tempEdges.insert(e);
+            tempAttributes[item.number].insert(filtered_attributes.begin(), filtered_attributes.end());
         }
 
+
+        int k = 3;
+        printf("query node is: %d, k=%d \n", query_node, k);
+        kcore->set_query_node(query_node);
+        kcore->set_k(k);
         
-        // total_output_file << "Query node: " << query_node 
-        //                   << ", private edges: " << private_edge_count 
-        //                   << ", baseline1 cost: " << duration1 
-        //                   << " seconds, max_attr1: " << success_d1 
-        //                   << ", community1: " << community1 
-        //                   << ", baseline2 cost: " << duration2
-        //                   << " seconds, max_attr2: " << success_d2 
-        //                   << ", community2: " << community2 << "\n";
-        // //baselines
-
         
-        //fptree
+        auto [duration, max_attributes, community] = kcore->fptree("test/fp_tree_output_" + std::to_string(query_node) + ".txt",
+            "test/Output_" + std::to_string(k) + "_fp_" + std::to_string(query_node) + ".txt", allResults);  //fptree
 
-        delete kcore;
+        std::ofstream total_output_file("test/Output_" + std::to_string(k) + "_fp_" + std::to_string(query_node) + ".txt", std::ios::app); 
 
-    //     for (const auto& edge : tempEdges){
-    //         graph->deleteEdge(edge);
-    //     } 
-    //     for (const auto& [node, tags] : tempAttributes){
-    //         graph->remove_attribute(node, tags);
-    //     }
+        total_output_file << "Query Duration: " << duration << " seconds \n";
+        total_output_file.flush(); 
 
-    //     tempEdges.clear();
-    //     tempAttributes.clear();
-    //     //public
+        for (const auto& edge : tempEdges) {
+            graph->deleteEdge(edge);
+        }
+        for (const auto& [node, tags] : tempAttributes) {
+            graph->remove_attribute(node, tags);
+        }
 
-    //     //output_file.close();
+        tempEdges.clear();
+        tempAttributes.clear();
 
-    // }
-    
+        // output_file.close();
+    }
+
     total_output_file.close();
     delete graph;
 
