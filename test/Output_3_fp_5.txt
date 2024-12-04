@@ -1,0 +1,4 @@
+Community Node ID: 9 8 7 6 5 
+Community Size: 5
+Max attribute: 2
+Query Duration: 0.000289 seconds 
