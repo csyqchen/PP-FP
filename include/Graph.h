@@ -36,7 +36,9 @@ public:
     void add_edge(int x, int y);
 
     const Neighbors& neighbors(int v) const;
+    const int neighbors_node(int v,int index) const;
     std::vector<int> getNeighborIDs(int v) const;
+    std::vector<int> getNeighborIndices(int v) const;
 
     // Existence check
     bool hasEdge(int x, int y) const;
@@ -60,8 +62,12 @@ public:
     void load_attribute(std::string data_path);
     void clear();
 
+    void generateIndices();
+    std::unordered_map<int, int> idToIndex;
+    std::vector<int> nodeIds;
 
-private:
+
+//private:
     std::unordered_map<int, Neighbors> ng;
     std::unordered_set<int> nodes;
     std::unordered_set<Edge, MyEdgeHash> edges;

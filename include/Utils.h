@@ -1,4 +1,4 @@
-
+﻿
 #pragma once
 #include <iostream>
 #include <fstream>
@@ -6,6 +6,9 @@
 #include <vector>
 #include <string>
 #include <utility>
+#include <set>
+#include <stack>
+#include <queue>
 
 //************************************************************ data type **************************************
 
@@ -54,6 +57,129 @@ struct PrivateEntry {
     std::string name;
     int number;
     std::unordered_set<std::string> tags;
+};
+
+class UNode {
+public:
+    int value = 0;
+    UNode* parent = this;
+    int rank = -1;
+    int represent = -1; // This variable is used for updating our tree index
+
+    // Constructor
+    UNode() {}
+    UNode(int val) : value(val) {}
+    //UNode(int val) : value(val), parent(this), rank(0), represent(val) {}
+};
+
+class TNode {
+//private:
+    int core = -1;
+    std::set<int> nodeSet;
+    std::set<int> coreSet;
+    std::vector<TNode*> childList;
+
+public:
+    // Constructor
+    TNode(int core) : core(core) {}
+
+    // Getter and setter for core
+    int getCore() const {
+        return core;
+    }
+    void setCore(int core) {
+        this->core = core;
+    }
+
+    // Getter and setter for nodeSet
+    std::set<int>& getNodeSet() {
+        return nodeSet;
+    }
+    void setNodeSet(const std::set<int>& newNodeSet) {
+        nodeSet = newNodeSet;
+    }
+
+    // Getter and setter for coreSet
+    void setCoreSet(const std::set<int>& nodes) { coreSet = nodes; }
+    const std::set<int>& getCoreSet() const { return coreSet; }
+
+    // Getter and setter for childList
+    std::vector<TNode*>& getChildList() {
+        return childList;
+    }
+    void setChildList(const std::vector<TNode*>& newChildList) {
+        childList = newChildList;
+    }
+
+    void update(const std::set<int>& nodes) {
+        coreSet.insert(nodes.begin(), nodes.end());
+    }
+
+    // Update coreSet from subtree
+    void updateCoreSetFromSubtree() {
+        // 初始化 coreSet 为当前节点的 nodeSet
+        this->setCoreSet(this->getNodeSet());
+
+        // 使用队列实现层级遍历
+        std::queue<TNode*> queue;
+        queue.push(this); // 将当前节点作为起点加入队列
+
+        // 遍历子树中所有节点
+        while (!queue.empty()) {
+            TNode* current = queue.front();
+            queue.pop();
+
+            if (!current) continue; // 跳过空节点
+
+            // 合并当前节点的 nodeSet 到根节点的 coreSet
+            this->update(current->getNodeSet());
+
+            // 将子节点加入队列
+            for (TNode* child : current->getChildList()) {
+                if (child) {
+                    queue.push(child);
+                }
+            }
+        }
+    }
+
+};
+
+class UnionFind {
+public:
+    void makeSet(UNode* x) {
+        x->parent = x;
+        x->rank = 0;
+        x->represent = x->value; // Initialize as itself for tree index
+    }
+
+    UNode* find(UNode* x) {
+        if (x->parent != x) {
+            x->parent = find(x->parent); // Path compression
+        }
+        return x->parent;
+    }
+
+    void unionSets(UNode* x, UNode* y) {
+        UNode* xRoot = find(x);
+        UNode* yRoot = find(y);
+
+        if (xRoot == yRoot) {
+            return; // x and y are already in the same set
+        }
+
+        // Merge the sets based on rank
+        if (xRoot->rank < yRoot->rank) {
+            xRoot->parent = yRoot;
+        }
+        else if (xRoot->rank > yRoot->rank) {
+            yRoot->parent = xRoot;
+        }
+        else {
+            yRoot->parent = xRoot;
+            xRoot->rank = xRoot->rank + 1;
+        }
+    }
 };
 
 // ********************************************  data io ********************************************************************
@@ -165,7 +291,7 @@ inline void count_private(const std::string& filename, int& res) {
 
 // ********************************************  functions ********************************************************************
 
-// ����ģ�庯��
+// ����ģ�庯��
 template<typename T>
 std::unordered_set<T> intersectHelper(const std::unordered_set<T>& set1, const std::unordered_set<T>& set2) {
     std::unordered_set<T> ret_set;
@@ -186,14 +312,13 @@ std::unordered_set<T> intersectHelper(const std::unordered_set<T>& set1, const s
     return ret_set;
 }
 
-// �ݹ���ģ�庯��
 template<typename T, typename... Sets>
 std::unordered_set<T> intersectHelper(const std::unordered_set<T>& set1, const std::unordered_set<T>& set2, const Sets&... sets) {
     auto temp_result = intersectHelper(set1, set2);
     return intersectHelper(temp_result, sets...);
 }
 
-// ��ں���
+
 template<typename T, typename... Sets>
 std::unordered_set<T> intersect(const std::unordered_set<T>& firstSet, const Sets&... sets) {
     return intersectHelper(firstSet, sets...);
