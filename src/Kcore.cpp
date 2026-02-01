@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <sstream>
@@ -10,12 +10,16 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <any>
 #include <set>
 #include <stack>
 #include <chrono>
+// #include <omp.h>
 
 
 using namespace std;
+
+//std::unordered_map<std::string, std::set<int>> attr_map;
 
 Kcore::Kcore(Graph* p_graph, int query_node, int k_coreness) :v(query_node), k(k_coreness) {
     graph = p_graph;
@@ -36,8 +40,8 @@ void Kcore::set_query_node(int node) {
         std::cerr << "Error: Target ID " << node << " not found in the tree." << std::endl;
         return;
     }
-    // 使用栈来迭代收集子树的所有节点，避免递归
-    std::set<int> result;
+
+    std::unordered_set<int> result;
     std::stack<TNode*> nodeStack;
     nodeStack.push(targetNode);
 
@@ -53,7 +57,7 @@ void Kcore::set_query_node(int node) {
             nodeStack.push(child);
         }
     }
-    targetNode->setCoreSet(result);
+    // targetNode->setCoreSet(result);
 }
 
 void Kcore::set_k(int query_k) {
@@ -162,7 +166,7 @@ bool Kcore::check_kcore(Graph* graph, int k, std::vector<int>& kcore_nodes) {
         return false;
     }
 
-    int validNodeCount = 0;  // the number of nodes with degree >= k
+    int validNodeCount = 0;  // 用于统计度数大于或等于 k 的节点个数
     std::vector<int> temp_kcore_nodes;
 
     for (auto node : graph->getNodes()) {
@@ -175,278 +179,41 @@ bool Kcore::check_kcore(Graph* graph, int k, std::vector<int>& kcore_nodes) {
         }
     }
 
+    // 输出有效节点的数量
     std::cerr << "Number of nodes with degree >= k: " << validNodeCount << std::endl;
 
+    // 如果有效节点数量小于 k，则不满足 k-core
+    // if (validNodeCount < k + 1) {
+    //     return false;
+    // }
+    //mi
     kcore_nodes = std::move(temp_kcore_nodes);
     return true;
 }
 
-double Kcore::baseline1(std::ofstream& output_file, size_t& success_d, size_t& community) {
-    clock_t start = clock();
-    //find kcore to filter graph
-    search_kcore(graph);
-    if (!getNodes().count(v)) {
-        //printf("query node %d is not in a %d-core\n", v, k);
-        output_file << "query node " << v << " is not in a " << k << "-core\n";
-        clock_t end = clock();
-        double duration = (end - start) / CLOCKS_PER_SEC;
-        //printf("baseline1 cost:%2f \n", duration);
-        output_file << "baseline1 cost: " << duration << " \n";
-        return duration;
-    }
+std::tuple<double, int, int, int> Kcore::fptree(const std::string& fptreeFile, const std::string& outputFileName) {
 
-    Graph::Attributes query_attributes = attrs(v);
-    std::vector<std::string>query_attributes_list(query_attributes.begin(), query_attributes.end());
-    std::unordered_map<std::string, std::unordered_set<int>> attr_map;
-    //the key is the attribute, and the value is the set of nodes with the attribute
-
-    //fulfill the attr_map
-    printf("making the attr map......");
-    for (auto item : query_attributes_list) {
-        std::unordered_set<int> node_list;
-        for (auto node : getNodes()) {
-            if (attrs(node).count(item)) node_list.insert(node);
-
-        }
-        attr_map[item] = node_list;
-    }
-    printf(" attr map finished\n");
-    //std::cout << "size of graphs:" << attr_map["graphs"].size() <<std::endl;
-    //std::vector<std::string>query_attributes_list(query_attributes.begin(), query_attributes.end());
-    //std::unique_ptr<Graph> graph_copy = std::make_unique<Graph>();
-
-    success_d = 0;
-    community = 0;
-
-    for (size_t d = 1; d <= query_attributes_list.size(); d++) {
-        printf("start searching the community with attrs: %zu\n", d);
-        output_file << "start searching the community with attrs: " << d << "\n";
-        bool find = false;
-        std::vector<std::vector<std::string>> attr_combinations = combinations(query_attributes_list, d);
-        for (auto attr_candidate : attr_combinations) {
-            //merge corresponding nodes
-            std::unordered_set<int> nodes_candidate = attr_map[attr_candidate[0]];
-
-            for (size_t i = 1; i < attr_candidate.size(); i++) {
-                intersect_filter(nodes_candidate, attr_map[attr_candidate[i]]);
-            }
-            //std::cout << "size of nodes_candidate:" << nodes_candidate.size() <<std::endl;
-            if (nodes_candidate.size() < k + 1) continue;
-
-            std::unique_ptr<Graph> graph_copy = std::make_unique<Graph>();
-            try {
-
-                graph_copy->setData(graph);
-                // if (graph_copy == nullptr) {
-                //     std::cerr << "graph_copy is null" << std::endl;
-                //     return;
-                // }
-                auto nodes = graph_copy->getNodes();
-                // if (nodes.empty()) {
-                //     std::cerr << "No nodes in the graph" << std::endl;
-                //     return;
-                // }
-
-                for (auto node : nodes) {
-                    if (!nodes_candidate.count(node)) graph_copy->deleteNode(node);
-                }
-
-            }
-            catch (const std::bad_alloc& e) {
-                std::cerr << "Memory allocation failed: " << e.what() << std::endl;
-                continue;
-            }
-
-
-            // for (auto node : graph_copy->getNodes()) {
-            //     if (!nodes_candidate.count(node)) graph_copy->deleteNode(node);
-            // }
-
-            search_kcore(graph_copy.get());
-            if (graph_copy->getNodes().count(v)) {
-                printf("find the community with max attrs: %zu\n", d);
-                output_file << "find the community with max attrs: " << d << "\n";
-                for (const auto& str : attr_candidate) {
-                    //std::cout << str << " ";
-                    output_file << str << " ";
-                }
-                success_d = d;
-                community = graph_copy->getNodes().size();  // 记录社区的节点数
-                printf("\n");
-                std::cout << "size of nodes:" << community << std::endl;
-                output_file << "\n";
-                output_file << "size of nodes: " << community << "\n";
-                if (community < 20) {
-                    for (const auto& node : graph_copy->getNodes()) {
-                        std::cout << node << " ";
-                        output_file << node << " ";
-                    }
-                    printf("\n");
-                    output_file << "\n";
-                }
-                //printf("\n");
-                find = true;
-                break;
-            }
-
-        }
-        if (!find) {
-            output_file << "no " << d << " attributes community, max attrs: " << success_d << "\n";
-            break;
-        }
-    }
-
-    clock_t end = clock();
-    //double duration = (end - start) / CLOCKS_PER_SEC;
-    double duration = static_cast<double>(end - start) / CLOCKS_PER_SEC;
-    printf("baseline1 cost:%2f \n", duration);
-    output_file << "\nbaseline1 cost: " << duration << " \n";
-    return duration;
-}
-
-double Kcore::baseline2(std::ofstream& output_file, size_t& success_d, size_t& community) {
-    //void Kcore::baseline2() {
+    // std::map<int, std::pair<int,int>> corenessMap; //存储coreness和step
 
     clock_t start = clock();
-    search_kcore(graph);
-    if (!getNodes().count(v)) {
-        //printf("query node %d is not in a %d-core\n", v, k);
-        output_file << "query node " << v << " is not in a " << k << "-core\n";
-        clock_t end = clock();
-        double duration = (end - start) / CLOCKS_PER_SEC;
-        //printf("baseline2 cost:%2f \n", duration);
-        output_file << "baseline2 cost: " << duration << " \n";
-        return duration;
-    }
-
-    Graph::Attributes query_attributes = attrs(v);
-    std::vector<std::string> query_attributes_list(query_attributes.begin(), query_attributes.end());
-    std::unordered_map<std::string, std::unordered_set<int>> attr_map;
-
-    printf("making the attr map......");
-    for (auto& item : query_attributes_list) {
-        std::unordered_set<int> node_list;
-        for (auto node : getNodes()) {
-            if (attrs(node).count(item)) node_list.insert(node);
-        }
-        attr_map[item] = node_list;
-    }
-    printf(" attr map finished\n");
-
-    size_t min_d = 1;
-    size_t max_d = query_attributes_list.size();
-    success_d = 0;
-    community = 0;
-    std::vector<std::vector<std::string>> combinations_candidate;
-
-    while (min_d <= max_d) {
-        size_t mid_d = (min_d + max_d) / 2;
-        //printf("start searching the community with attrs: %d\n", mid_d);
-        output_file << "start searching the community with attrs: " << mid_d << "\n";
-        bool find = false;
-        std::vector<std::vector<std::string>> attr_combinations = combinations(query_attributes_list, mid_d);
-
-        for (auto& attr_candidate : attr_combinations) {
-            std::unordered_set<int> nodes_candidate = attr_map[attr_candidate[0]];
-
-            for (size_t i = 1; i < attr_candidate.size(); i++) {
-                intersect_filter(nodes_candidate, attr_map[attr_candidate[i]]);
-            }
-
-            if (nodes_candidate.size() < k + 1) continue;
-            std::unique_ptr<Graph> graph_copy = std::make_unique<Graph>();
-
-            try {
-                graph_copy->setData(graph);
-                //new
-                auto nodes = graph_copy->getNodes();
-
-                // for (auto node : graph_copy->getNodes()) {
-                //     if (!nodes_candidate.count(node)) graph_copy->deleteNode(node);
-                // }
-                for (auto node : nodes) {
-                    if (!nodes_candidate.count(node)) graph_copy->deleteNode(node);
-                }
-            }
-            catch (const std::bad_alloc& e) {
-                std::cerr << "Memory allocation failed: " << e.what() << std::endl;
-                continue;
-            }
-
-            search_kcore(graph_copy.get());
-            if (graph_copy->getNodes().count(v)) {
-                // combinations_candidate.push_back(attr_candidate); // Storing all successful combinations
-                //printf("find the community with max attrs: %zu\n", mid_d);
-                output_file << "find the community with max attrs: " << mid_d << "\n";
-                for (const auto& str : attr_candidate) {
-                    //std::cout << str << " ";
-                    output_file << str << " ";
-                }
-                //printf("\n");
-                output_file << "\n";
-                success_d = mid_d;
-                community = graph_copy->getNodes().size();  // 记录满足条件的社区节点数
-
-                //std::cout << "size of nodes:" << graph_copy->getNodes().size() << std::endl;
-                output_file << "size of nodes: " << community << "\n";
-                if (community < 20) {
-                    for (const auto& node : graph_copy->getNodes()) {
-                        //std::cout << node << " ";
-                        output_file << node << " ";
-                    }
-                }
-                printf("\n");
-                find = true;
-                break;
-            }
-        }
-        if (find) {
-            min_d = mid_d + 1;
-            success_d = mid_d;
-        }
-        else if (!find && mid_d > success_d + 1) {
-            max_d = mid_d - 1;
-        }
-        else if (!find && mid_d <= success_d + 1) {
-            //printf("no %zu attributes community, max attrs: %zu\n", mid_d, success_d);
-            output_file << "no " << mid_d << " attributes community, max attrs: " << success_d << "\n";
-            break;
-        }
-    }
-    clock_t end = clock();
-    //double duration = (end - start) / CLOCKS_PER_SEC;
-    double duration = static_cast<double>(end - start) / CLOCKS_PER_SEC;
-    //printf("baseline2 cost:%2f \n", duration);
-    output_file << "\nbaseline2 cost: " << duration << " \n";
-    return duration;
-    // Output or use combinations_candidate as needed
-    // for (const auto& comb : combinations_candidate) {
-    //     for (const auto& attr : comb) {
-    //         std::cout << attr << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-}
-
-std::tuple<double, int, int> Kcore::fptree(const std::string& fptreeFile, const std::string& outputFileName, std::vector<std::string>& result) {
-
-    clock_t start = clock();
+    
+    int iteration = 0;
 
     std::ifstream fpFile(fptreeFile);
     if (!fpFile.is_open()) {
         std::cerr << "Cannot open the file: " << fptreeFile << std::endl;
-        return std::make_tuple(-1.0, 0, 0);
+        return std::make_tuple(-1.0, 0, 0, 0);
     }
 
-    std::vector<std::vector<Node>> branches; //store different branches
-    std::map<int, std::vector<Node>> levelToBranchMap; //store each level and its corresponding branches
-    int rootNode = v;
-    std::cerr << "rootNode: " << v << std::endl;
+    std::vector<std::vector<Node>> branches; // 存储不同的支链
+    std::map<int, std::vector<Node>> levelToBranchMap; //存储每个层次对应的分支
+    int rootNode = v; //根结点为query node
+    //mi std::cerr << "rootNode: " << v << std::endl;
 
 
     std::string line;
     std::vector<Node> currentBranch;
-    int previousLevel = -1;
+    int previousLevel = -1; //用于跟踪上一个结点的level
 
     int branchCounter = 0;
 
@@ -470,23 +237,31 @@ std::tuple<double, int, int> Kcore::fptree(const std::string& fptreeFile, const 
         std::string attribute;
 
         while (std::getline(iss, attribute, ',')) {
-            attribute.erase(0, attribute.find_first_not_of(" \t"));
-            attribute.erase(attribute.find_last_not_of(" \t") + 1);
+            // attribute.erase(0, attribute.find_first_not_of(" \t"));
+
+            attribute.erase(0, attribute.find_first_not_of(" \t\r\n"));
+
+            attribute.erase(attribute.find_last_not_of(" \t\r\n") + 1);
+
+            // attribute.erase(attribute.find_last_not_of(" \t") + 1);
 
             if (!attribute.empty() && attribute.back() == '}') {
                 attribute.pop_back();
             }
+
+            attribute.erase(attribute.find_last_not_of(" \t\r\n") + 1);
+
             if (!attribute.empty()) {
                 attributes.insert(attribute);
             }
         }
 
-        std::cerr << "FPNodeID: " << nodeID << ", Count: " << count << ", TotalCount: " << totalCount << "\n";
-        std::cerr << "Attributes: ";
-        for (const auto& attr : attributes) {
-            std::cerr << "[" << attr << "] ";
-        }
-        std::cerr << "\n";
+        // std::cerr << "FPNodeID: " << nodeID << ", Count: " << count << ", TotalCount: " << totalCount << "\n";
+        // std::cerr << "Attributes: ";
+        // for (const auto& attr : attributes) {
+        //     std::cerr << "[" << attr << "] ";
+        // }
+        // std::cerr << "\n";
 
 
         int currentLevel = indentLevel / 2;
@@ -495,7 +270,7 @@ std::tuple<double, int, int> Kcore::fptree(const std::string& fptreeFile, const 
 
         // if (currentLevel == 1) {
         if (currentLevel <= previousLevel) {
-            // new branch 
+            // 新的支链
             if (!currentBranch.empty()) {
                 branches.push_back(currentBranch);
                 currentBranch.clear();
@@ -503,12 +278,12 @@ std::tuple<double, int, int> Kcore::fptree(const std::string& fptreeFile, const 
             }
         }
 
-        // update currentBranch to include prefixed paths
+        // 更新currentBranch，使其包含前缀路径
         if (currentLevel > 0 && levelToBranchMap.find(currentLevel - 1) != levelToBranchMap.end()) {
             currentBranch = levelToBranchMap[currentLevel - 1];
-            // Inherit the parent path
+            // 继承父路径
         }
-        currentNode.branches.insert(branchCounter);
+        currentNode.branches.insert(branchCounter); //将当前分支编号插入结点
         currentBranch.push_back(currentNode);
         levelToBranchMap[currentLevel] = currentBranch;
 
@@ -523,244 +298,290 @@ std::tuple<double, int, int> Kcore::fptree(const std::string& fptreeFile, const 
 
     bool foundDegk = false;
     int maxAttributes = 0;
-    int totalMaxAttributes = branches[1][1].totalCount; //maximum possible attribute number
-    std::cout << "totalMaxAttributes" << totalMaxAttributes;
+    int totalMaxAttributes = branches[0][1].totalCount + 1; //最大的可能attr
+    //mi std::cout << "totalMaxAttributes:" << totalMaxAttributes << endl;
     std::vector<int> selectedNodes;
-    std::vector<int> tempSelectedNodes;
-    int tempMaxAttributes = 0;
-    std::set<std::string> commattr, tempcommattr; //store the current public attributes
-
-    for (const auto& branch : branches) {
-        std::vector<int> candidateNodes = { rootNode };
-        auto it = branch.cbegin();
-        while (it != branch.cend()) {
-            const auto& node = *it;
-
-            if (node.count == totalMaxAttributes) {
-                candidateNodes.push_back(node.id);
-                auto next_it = std::next(it);
-                bool nextNodeCondition = (next_it == branch.cend() || next_it->count < totalMaxAttributes);
-
-                if (candidateNodes.size() >= k && nextNodeCondition) {
-                    commattr = std::set<std::string>(node.attributes.begin(), node.attributes.end());
-                    if (validateCandidateSet(candidateNodes, commattr, graph, v, k, outputFileName)) {
-                        foundDegk = true;
-                        selectedNodes = candidateNodes;
-                        maxAttributes = totalMaxAttributes;
-                        std::cerr << "Validate success...\n";
-                        break;
-                    }
-                } //find the current deg_q >= k and the next node's count is lowered
-            }
-            ++it;
-        }
-        if (foundDegk) {
-            break;
-        }
-    }
+    std::vector<int> tempSelectedNodes; //候选社区结点集合
+    int tempMaxAttributes = 0; //候选社区最大属性值
+    std::set<std::string> commattr, tempcommattr; //存储当前公共属性
+    int community_size = 0, temp_size = 0;
 
     while (!foundDegk && totalMaxAttributes > 1) {
+
+        // totalMaxAttributes--;
         totalMaxAttributes--;
-        std::cout << "totalMaxAttributes" << totalMaxAttributes;
+        built.clear();
+
+        std::cout << "totalMaxAttributes:" << totalMaxAttributes << endl;
         std::cerr << "Searching with totalMaxAttributes = " << totalMaxAttributes << std::endl;
 
+        // 遍历分支
         for (const auto& branch : branches) {
-            if (foundDegk) break;
-            std::vector<int> candidateNodes = { rootNode };
-            std::set<std::string> branchCommAttr; //store the common attributes of the current branch
+
+            if (foundDegk) break; // 如果已经找到，跳出循环
+            std::vector<int> candidateNodes = {};
+            std::set<std::string> branchCommAttr; // 存储当前分支的公共属性
 
             auto it = branch.cbegin();
             while (it != branch.cend()) {
                 const auto& node = *it;
 
+                // std::cerr << "Visiting node ID: " << node.id
+                // << " (count: " << node.count << ", totalCount: " << node.totalCount << ")" << std::endl;
+
+                if (node.totalCount < totalMaxAttributes) {
+                    break;
+                } //退出当前支链
+
+                // 直接验证逻辑
                 if (node.count >= totalMaxAttributes) {
                     candidateNodes.push_back(node.id);
                     // branchCommAttr.insert(node.attributes.begin(), node.attributes.end());
+                    branchCommAttr = std::set<std::string>(node.attributes.begin(), node.attributes.end());
+
 
                     auto next_it = std::next(it);
                     bool nextNodeCondition = (next_it == branch.cend() || next_it->count < totalMaxAttributes);
 
-                    if (candidateNodes.size() >= k && nextNodeCondition) {
-                        branchCommAttr.insert(node.attributes.begin(), node.attributes.end());
+                    if (candidateNodes.size() >= (k + 1) && nextNodeCondition) {
+                        //mi std::cerr << "candidate node size: " << candidateNodes.size() << "\n";
+                        //mi std::cout << "Candidate Nodes: ";
+                        for (int id : candidateNodes) {
+                            std::cout << id << " ";
+                        }
+                        std::cout << std::endl;
+                        //mi std::cerr << "Validating candidateNodes directly without conditional tree...\n";
 
-                        std::cerr << "Validating candidateNodes directly without conditional tree...\n";
+                        auto validateResultA = validateCandidateSet(candidateNodes, branchCommAttr, graph, v, k, outputFileName);
+                        iteration ++;
 
-                        // validate candidate solution
-                        if (validateCandidateSet(candidateNodes, branchCommAttr, graph, v, k, outputFileName)) {
+                        // 直接验证，找到了最优解
+                        if (validateResultA.first) {
+                            community_size = validateResultA.second;
                             foundDegk = true;
                             selectedNodes = candidateNodes;
                             commattr = branchCommAttr;
-                            maxAttributes = totalMaxAttributes;
-                            break;
-                        }
+                            maxAttributes = commattr.size();
+                            break; // 退出内层循环
+                        }  //应该改为返回验证后的结点的set
                     }
                 }
 
-                //satisfy the conditions for constructing a conditional tree
-                if (node.count < totalMaxAttributes && node.totalCount >= totalMaxAttributes && built.find(node.id) == built.end()) {
-                    std::cerr << "Building conditional tree for Node ID: " << node.id << std::endl;
+                // 构造条件树逻辑
+                if (node.count < totalMaxAttributes && node.totalCount >= totalMaxAttributes && built.find(node.id) == built.end() && foundDegk != true) {
+                    //mi std::cerr << "Checking node ID: " << node.id << " with node.count = " << node.count << " and node.totalCount = " << node.totalCount << std::endl;
+                    //mi std::cerr << "Building conditional tree for Node ID: " << node.id << std::endl;
 
-                    auto [tempNodes, threshold, tempCommAttr] = buildConditionalFPTree(node.id, rootNode, branches, totalMaxAttributes);
+                    // 构造条件树
+                    // auto [tempNodes, threshold, tempCommAttr] = buildConditionalFPTree(node.id, rootNode, branches, totalMaxAttributes);
+                    // auto [tNodes, tempCommAttr] = getConditionalPatternBase(node.id, rootNode, branches, totalMaxAttributes);
 
-                    // Check if the size of candidateNodes satisfies k
-                    if (tempNodes.size() >= k) {
-                        if (threshold >= totalMaxAttributes) {
+                    //返回条件树中所有可能的组合
+                    std::vector<std::pair<std::set<int>, std::set<std::string>>> validCandidates = getConditionalPatternBase(node.id, rootNode, branches, totalMaxAttributes);
+
+                    //mi for (const auto& [nodes, attrs] : validCandidates) {
+                    //     std::cerr << "{ ";
+                    //     for (int n : nodes) std::cerr << n << " ";
+                    //     std::cerr << "} with attrs: { ";
+                    //     for (const auto& a : attrs) std::cerr << a << " ";
+                    //     std::cerr << "}" << std::endl;
+                    // }
+
+                    for (const auto& candidate : validCandidates) {
+
+                        std::vector<int> tempNodes(candidate.first.begin(), candidate.first.end());
+                        const std::set<std::string>& tempCommAttr = candidate.second;
+
+                        auto validateResult = validateCandidateSet(tempNodes, tempCommAttr, graph, v, k, outputFileName);
+                        iteration ++;
+
+                        if (validateResult.first) {
                             selectedNodes = tempNodes;
-                            maxAttributes = threshold;
+                            maxAttributes = tempCommAttr.size();
                             commattr = tempCommAttr;
-
-                            // validate candidate solution
-                            if (validateCandidateSet(selectedNodes, commattr, graph, v, k, outputFileName)) {
-                                foundDegk = true;
-                                break;
-                            }
-                        } else if (threshold >= tempMaxAttributes) {
-                            // preserve better alternative answers
-                            tempSelectedNodes = tempNodes;
-                            tempMaxAttributes = threshold;
-                            tempcommattr = tempCommAttr;
-                            std::cerr << "Saving temporary candidate with threshold = " << threshold << std::endl;
+                            community_size = validateResult.second;
+                            foundDegk = true;
+                            break;
+                        } else {
+                            //mi std::cerr << "Validation failed for set size =" << tempNodes.size() << "\n";
                         }
-                    } else {
-                        std::cerr << "Skipping CandidateNodes with size < k: " << tempNodes.size() << std::endl;
                     }
+
+                    if (!foundDegk) {
+                        built.insert(node.id);
+                        //mi std::cerr << "Build conditional tree failed." << "\n";
+                    }
+                    if (foundDegk) break; // 外层循环再次检查
                 }
-
-                if (foundDegk) break;
-                ++it;
-            }
-            if (foundDegk) break;
-        }
-
-        if (!foundDegk && tempMaxAttributes >= totalMaxAttributes - 1 && tempMaxAttributes >= 1) {
-            selectedNodes = tempSelectedNodes;
-            commattr = tempcommattr;
-            std::cerr << "Validating temporary candidate with threshold = " << tempMaxAttributes << std::endl;
-
-            std::cerr << "Selected Nodes: ";
-            for (const auto& node : selectedNodes) {
-                std::cerr << node << " ";
-            }
-            std::cerr << std::endl;
-
-            std::cerr << "Common Attributes: ";
-            for (const auto& attr : commattr) {
-                std::cerr << attr << " ";
-            }
-            std::cerr << std::endl;
-
-            // validate candidate solution
-            if (validateCandidateSet(selectedNodes, commattr, graph, v, k, outputFileName)) {
-                foundDegk = true;
-            } else {
-                selectedNodes.clear();
-                commattr.clear();
-                tempSelectedNodes.clear();
-                tempcommattr.clear();
-                tempMaxAttributes = 0;
-                std::cerr << "Validation failed. Cleared selectedNodes and commattr.\n";
+                if (!foundDegk) ++it;
+                if (foundDegk) break; // 外层循环再次检查
+                // totalMaxAttributes--; //属性-1
             }
         }
-        built.clear();
     }
 
     clock_t end = clock();
     double duration = static_cast<double>(end - start) / CLOCKS_PER_SEC;
     std::cout << "\nfptree cost: " << duration << " \n";
-    std::ostringstream oss;
-    oss<<"query node:"<<v<<"; community: ";
-    for (size_t i = 0; i < selectedNodes.size(); ++i) {
-        oss << selectedNodes[i]; 
-        if (i != selectedNodes.size() - 1) {
-            oss << ", ";
-        }
-    }
-
-    if (selectedNodes.empty()) {
-        result.push_back("Community: [No nodes selected]");
-    } else {
-        result.push_back(" [" + oss.str() + "]");
-    }
-
-    return std::make_tuple(duration, maxAttributes, selectedNodes.size());
+    return std::make_tuple(duration, maxAttributes, community_size, iteration);
 }
 
-bool Kcore::validateCandidateSet(const std::vector<int>& selectedNodes, const std::set<std::string>& commattr, Graph* graph, int v, int k, const std::string& outputFileName) {
-    // update attrSet
-    std::set<int> attrSet;
+std::pair<bool,int> Kcore::validateCandidateSet(const std::vector<int>& selectedNodes, const std::set<std::string>& commattr, Graph* graph, int v, int k, const std::string& outputFileName) {
 
-    // output commattr
-    std::cerr << "CommAttr: ";
-    for (const auto& attr : commattr) {
-        std::cerr << attr << " ";
-    }
-    std::cerr << std::endl;
+    auto startTime = std::chrono::high_resolution_clock::now();
 
-    std::set<int> tempIntersection; // store the current intersection result
-    bool firstAttribute = true;
+    std::vector<TNode*> subtreeNodes;
+    std::unordered_set<TNode*> visited;
 
-    for (const auto& attr : commattr) {
-        auto it = attr_map.find(attr);
-        if (it != attr_map.end()) {
-            const std::set<int>& attrNodes = it->second;
+    collectTreeNodes(nodeIndex[v], subtreeNodes, visited);
 
-            if (firstAttribute) {
-                tempIntersection = attrNodes;
-                firstAttribute = false;
-            } else {
-                std::set<int> newIntersection;
-                std::set_intersection(
-                    tempIntersection.begin(), tempIntersection.end(),
-                    attrNodes.begin(), attrNodes.end(),
-                    std::inserter(newIntersection, newIntersection.begin())
-                );
+    std::unordered_set<int> candidateSet;  //最终的候选结点集合
 
-                tempIntersection = std::move(newIntersection);
+    // std::cout << "commattr: ";
+    // for (const auto& attr : commattr) {
+    //     std::cout << attr << " ";
+    // }
+    // std::cout << std::endl;
+
+    for (TNode* treenode : subtreeNodes){
+        const auto& invertedIndex = treenode->getInvertedIndex();  //treenode对应的map
+
+        std::vector<std::pair<std::string, std::unordered_set<int>>> setToIntersect;
+
+        std::cout << "[COMMATTR] ";
+
+        for (const std::string& attr: commattr) {
+            auto it = invertedIndex.find(attr);
+            if (it != invertedIndex.end()) {
+                std::unordered_set<int> tempIntersect(it->second.begin(), it->second.end());
+                setToIntersect.emplace_back(attr, tempIntersect);
             }
-        } else {
-            std::cerr << "Attribute " << attr << " not found in attr_map.\n";
-            tempIntersection.clear();
-            break;
+            std::cout << attr << " ";
+        }
+        std::cout << std::endl;
+
+        if (setToIntersect.size() < commattr.size()) {  //属性匹配不完整则跳过
+            continue;
+        }
+
+        if (!setToIntersect.empty()) {
+
+            std::sort(setToIntersect.begin(), setToIntersect.end(), [](const auto& a, const auto& b) {
+                return a.second.size() < b.second.size();
+            });
+
+            //根据集合大小从小到大排序
+
+            std::unordered_set<int> intersectSet = setToIntersect[0].second;
+
+            std::cout << "[INIT] attr=" << setToIntersect[0].first
+                      << " intersectSet size=" << intersectSet.size()
+                      << " nodes: ";
+
+            std::cout << "[TREENODE] ptr=" << treenode
+                      << " nodeSet size=" << treenode->getNodeSet().size()
+                      << std::endl;
+
+
+            int shown = 0;
+            for (int x : intersectSet) {
+                std::cout << x << " ";
+                if (++shown >= 5) break;   // 只看前 5 个
+            }
+            if (intersectSet.size() > 5) std::cout << "...";
+            std::cout << std::endl;
+
+            for (int i = 1; i < setToIntersect.size(); i++) {
+                std::unordered_set<int> tempSet;
+                for (int node : intersectSet) {
+                    if (setToIntersect[i].second.find(node) != setToIntersect[i].second.end()) {
+                        tempSet.insert(node);
+                    }
+                }
+
+                std::cout << "  [TEMP] tempSet size=" << tempSet.size()
+                          << " nodes: ";
+
+                int shown = 0;
+                for (int x : tempSet) {
+                    std::cout << x << " ";
+                    if (++shown >= 5) break;
+                }
+
+                if (tempSet.size() > 5) {
+                    std::cout << "...";
+                }
+
+                std::cout << std::endl;
+
+                if (tempSet.empty()) {
+                    intersectSet.clear();
+                    break;
+                } //交集如果已为空，提前终止
+
+                intersectSet = tempSet;
+            }
+
+            // for (const auto& pair : setToIntersect) {
+            //     std::cout << "smallSetzhongtu:";
+            //     // 输出每个 unordered_set<int>
+            //     for (int node : pair.second) {
+            //         std::cout << node << " ";
+            //     }
+            //     std::cout << std::endl;
+            // }
+            //
+            // std::cout << "smallSet1:";
+            // for (const int& node : intersectSet) {
+            //     std::cout << node << " ";
+            // }
+            // std::cout << std::endl;
+
+            // if (intersectSet.empty()){
+            //     return {false, 0};
+            // }
+            candidateSet.insert(intersectSet.begin(), intersectSet.end());
+            if (!intersectSet.empty()){
+                std::cout << " intersectSet size= " << intersectSet.size() 
+                          << " nodes:" << std::endl;
+                
+                int shown = 0;
+                for (int x : intersectSet) {
+                    std::cout << x << " ";
+                    if (++shown >= 5) break;  // 只打印前 5 个
+                }
+
+                if (intersectSet.size() > 5) {
+                    std::cout << "...";
+                }
+                std::cout << std::endl;
+            }
         }
     }
 
-    attrSet = std::move(tempIntersection);
+    // 输出 selectedNodes 的内容
+    //mi std::cout << "selectedNodes: ";
+    // for (const int& node : selectedNodes) {
+    //     std::cout << node << " ";
+    // }
+    // std::cout << std::endl;
 
-    attrSet.insert(selectedNodes.begin(), selectedNodes.end());
-    
-    std::cout << "attrSet: ";
-    for (const auto& node : attrSet) {
-        std::cout << node << " ";
-    }
-    std::cout << std::endl;
-
-    // const std::set<int>& coreSet = attrSet;    
-    
-    const std::set<int>& coreSet = getSubtreeNodeSet(v);    
-
-    std::set<int> candidateSet;
-    
-    // auto startTime = std::chrono::high_resolution_clock::now();
-
-    std::set_intersection(
-        attrSet.begin(), attrSet.end(),
-        coreSet.begin(), coreSet.end(),
-        std::inserter(candidateSet, candidateSet.begin())
-    );
+    candidateSet.insert(selectedNodes.begin(), selectedNodes.end());
 
     // auto endTime = std::chrono::high_resolution_clock::now();
     // std::chrono::duration<double> elapsedTime = endTime - startTime;
 
-    std::cout << "candidateSet: ";
-    for (const auto& node : candidateSet) {
-        std::cout << node << " ";
-    }
-    std::cout << std::endl;
+    //mi std::cout << "candidateSet: ";
+    // for (const auto& node : candidateSet) {
+    //     std::cout << node << " ";
+    // }
+    // std::cout << std::endl;
 
-    // std::cerr << "Time taken by set_intersection: " << elapsedTime.count() << " seconds" << std::endl;
+    // 输出时间
+    // std::cerr << "Time taken by the last step: " << elapsedTime.count() << " seconds" << std::endl;
 
+    // 判断 candidateSet 的大小是否满足 k + 1
     if (candidateSet.size() >= k + 1) {
-        clock_t startTinyGraphTime = clock();
 
         std::vector<int> sortedCandidates(candidateSet.begin(), candidateSet.end());
         std::sort(sortedCandidates.begin(), sortedCandidates.end());
@@ -774,166 +595,157 @@ bool Kcore::validateCandidateSet(const std::vector<int>& selectedNodes, const st
             }
         }
 
+        // 检查 tiny_graph 是否包含目标节点 v
+        clock_t startTinyGraphTime = clock();
         Kcore* kcore = new Kcore(tiny_graph, v, k);
         kcore->search_kcore(tiny_graph);
 
         if (tiny_graph->hasNode(v)) {
             std::ofstream outputFile(outputFileName);
-            std::cout << "Tiny_graph: true" << std::endl;
+            //mi std::cout << "Tiny_graph: true" << std::endl;
             clock_t endTinyGraphTime = clock();
             double tinyGraphElapsedTime = static_cast<double>(endTinyGraphTime - startTinyGraphTime) / CLOCKS_PER_SEC;
-            std::cerr << "Tiny_graph construction time: " << tinyGraphElapsedTime << " seconds" << std::endl;
-            outputFile << "Community Node ID: ";
+            //mi std::cerr << "Tiny_graph construction time: " << tinyGraphElapsedTime << " seconds" << std::endl;
             for (int node : tiny_graph->getNodes()) {
-                outputFile << node << " ";
+                outputFile << "Node ID: " << node << "\n";
+            }
+            outputFile << "Attributes:" << endl;
+            if (commattr.empty()) {
+                outputFile << "No attributes\n";
+            }
+            for (const auto& attr: commattr) {
+                outputFile << attr << " ";
             }
             outputFile << "\n";
-            outputFile << "Community Size: " << tiny_graph->getNodes().size() << "\n";
-            outputFile << "Max attribute: " << commattr.size() << "\n";
+
+            int nodeSize = tiny_graph->getNodes().size();
+            //mi cout << "VALIDATE:" << nodeSize << std::endl;
+
             outputFile.close();
             delete tiny_graph;
             delete kcore;
-            return true;
+
+            return {true, nodeSize};
+            //返回kcore decomposition后的结点个数
         } else {
             delete tiny_graph;
             delete kcore;
         }
     } else {
-        std::cerr << "Skipping candidateSet with size < k+1: " << candidateSet.size() << std::endl;
+        //mi std::cerr << "Skipping candidateSet with size < k+1: " << candidateSet.size() << std::endl;
     }
 
-    return false;
+    return {false, 0};
 }
 
-std::vector<std::vector<Kcore::Node>> Kcore::getConditionalPatternBase(int targetNodeID, int rootNode, const std::vector<std::vector<Kcore::Node>>& branches) { 
-    std::vector<std::vector<Kcore::Node>> conditionalPatternBase;
-    std::set<std::vector<int>> uniquePaths;
+std::vector<std::pair<std::set<int>, std::set<std::string>>> Kcore::getConditionalPatternBase(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches, int totalMaxAttributes) {
 
-
-    std::cout << "rootNode in getConditionalPatternBase: " << rootNode << std::endl;
+    std::vector<std::vector<int>> nCount;   //用于存储结点与共享属性的个数的数组
+    std::unordered_map<int, std::set<std::string>> nAttr;   //用于存储结点与共享的属性的哈希表
 
     for (const auto& branch : branches) {
-        std::vector<Node> prefixPath;
         bool targetFound = false;
+        std::set<std::string> newSet;  //当前的共享属性
 
         for (auto it = branch.rbegin(); it != branch.rend(); ++it) {
             if (it->id == targetNodeID) {
                 targetFound = true;
+                newSet = it->attributes;
             }
             if (targetFound) {
-                prefixPath.push_back(*it);
-            }
-        }
-
-        if (!prefixPath.empty()) {
-            if (prefixPath.back().id == 0) {
-                prefixPath.back().id = rootNode;
-            }
-            std::reverse(prefixPath.begin(), prefixPath.end());
-            // conditionalPatternBase.push_back(prefixPath);
-            // new
-            std::vector<int> pathIds;
-            for (const auto& node : prefixPath) {
-                pathIds.push_back(node.id);
-            }
-            if (uniquePaths.find(pathIds) == uniquePaths.end()) {
-                uniquePaths.insert(pathIds);
-                conditionalPatternBase.push_back(prefixPath);
+                if (nAttr.find(it->id) == nAttr.end()) {
+                    nAttr[it->id] = newSet;  //新加入的id
+                    nCount.push_back({it->id, static_cast<int>(newSet.size())});
+                } else {
+                    nAttr[it->id].insert(newSet.begin(), newSet.end());
+                    for (auto& row : nCount) {
+                        if (row[0] == it->id) {
+                            // row[1] += static_cast<int>(newSet.size());
+                            row[1] = nAttr[it->id].size();
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
-    return conditionalPatternBase;
+
+    //记录所有prefix path中出现的结点、共享属性个数、属性名
+
+    std::vector<int> keysToRemove;   //因为频率低而移除的结点
+
+    nCount.erase(
+        std::remove_if(nCount.begin(), nCount.end(),
+            [&keysToRemove, totalMaxAttributes](const std::vector<int> & row) {
+                if (row[1] < totalMaxAttributes) {
+                    keysToRemove.push_back(row[0]);  //记录被删除的结点ID
+                    return true;
+                }
+                return false;
+            }),
+            nCount.end());
+
+    for (const int key : keysToRemove) {
+        nAttr.erase(key);    //nAttr中也删除对应的结点记录
+    }
+
+    std::sort(nCount.begin(), nCount.end(),
+            [](const std::vector<int> & a, const std::vector<int> & b) {
+                return a[1] > b[1];
+            });
+
+    // std::set<int> condMaxSet;
+    // std::set<std::string> condMaxAttr;
+    // std::vector<std::pair<std::set<int>, std::set<std::string>>> validSets;
+    std::set<std::pair<std::set<int>, std::set<std::string>>> uniqueSets;
+
+    for (auto it = nCount.rbegin(); it != nCount.rend(); ++it) {
+        int nID = (*it)[0]; //倒序获取nCount中的结点ID，低频到高频
+
+        auto attrIt = nAttr.find(nID);
+        if (attrIt != nAttr.end()) {
+            const std::set<std::string>& condAttr = attrIt->second;  //nID与targetNode共享的Attr集合
+            std::set<int> condSet;   //当前满足的node集合
+
+            for (const auto& candidate: nCount) {    //看其他结点是否包含这个Attr集合
+                int candidateID = candidate[0];
+                if (auto candidateIt = nAttr.find(candidateID); candidateIt != nAttr.end()) {
+                    const std::set<std::string>& tempAttr = candidateIt->second;
+
+                    if (std::includes(tempAttr.begin(), tempAttr.end(), condAttr.begin(), condAttr.end())) {
+                        condSet.insert(candidateID);
+                    }
+                }
+            }
+
+            // if (condSet.size() > condMaxSet.size()) {
+            //     condMaxSet = condSet;
+            //     condMaxAttr = condAttr;
+            // }
+            if (condSet.size() >= (k + 1)) {
+                uniqueSets.emplace(condSet, condAttr);
+            }
+        }
+
+    }
+    // if (condMaxSet.size() >= (k + 1)) {   //返回共享满足至少totalMaxAttr的最大的结点集合，以及对应的属性集合
+    //     return {condMaxSet, condMaxAttr};
+    // }
+    // else {
+    //     return {{}, {}};
+    // }
+
+    std::vector<std::pair<std::set<int>, std::set<std::string>>> validSets(uniqueSets.begin(), uniqueSets.end());
+
+    std::sort(validSets.begin(), validSets.end(),
+        [](const auto& a, const auto& b) {
+            return a.first.size() > b.first.size();
+        });
+
+    return validSets;
 }
 
-std::tuple<std::vector<int>, int, std::set<std::string>> Kcore::buildConditionalFPTree(int targetNodeID, int rootNode, const std::vector<std::vector<Kcore::Node>>& branches, int totalMaxAttributes) {
-
-    std::vector<std::vector<Kcore::Node>> conditionalPatternBase = getConditionalPatternBase(targetNodeID, rootNode, branches);
-
-    std::cout << "rootNode in buildConditionalFPTree: " << rootNode << std::endl;
-
-    std::map<int, int> itemFrequency;
-    std::set<std::string> commattr; //store the concatenation of the last node attribute
-    commattr.clear();
-
-    //select branches satisfying nodes >= k 
-    std::vector<std::vector<Kcore::Node>> validBranches;
-    for (const auto& pattern : conditionalPatternBase) {
-        if (pattern.size() >= k) {
-            validBranches.push_back(pattern);
-        }
-    }
-
-    //no valid branch found
-    if (validBranches.empty()) {
-        std::cout << "No valid branches with node count >= " << k << " found for targetNodeID " << targetNodeID << "\n";
-        return { {}, 0, {} };
-    }
-
-    for (const auto& pattern : validBranches) {
-        int lastNodeCount = pattern.back().count;
-        const auto& lastNodeAttributes = pattern.back().attributes;
-
-        std::cerr << "Last Node Attributes: ";
-        for (const auto& attr : lastNodeAttributes) {
-            std::cerr << "[" << attr << "] ";
-        }
-        std::cerr << "\n";
-
-        commattr.insert(lastNodeAttributes.begin(), lastNodeAttributes.end());
-
-        std::cerr << "CommAttr After Insert: ";
-        for (const auto& attr : commattr) {
-            std::cerr << "[" << attr << "] ";
-        }
-        std::cerr << "\n";
-
-        for (const auto& node : pattern) {
-            std::cout << "Node ID: " << node.id << " Count: " << node.count << "\n";
-            itemFrequency[node.id] += lastNodeCount;
-        }
-    }
-
-    std::vector<int> frequencies;
-    for (const auto& item : itemFrequency) {
-        frequencies.push_back(item.second);
-    }
-    std::sort(frequencies.begin(), frequencies.end(), std::greater<int>());
-
-    int threshold = 0;
-    if (frequencies.size() >= k + 1) {
-        threshold = frequencies[k];
-    } else {
-        threshold = 0;
-    }
-
-    if (threshold > 0) {
-        built.insert(targetNodeID);
-        std::cout << "Nodes in conditional FP-Tree for node " << targetNodeID << " with frequency >= " << threshold << ":\n";
-
-        std::vector<int> candidateNodes;
-        for (const auto& item : itemFrequency) {
-            if (item.second >= threshold) {
-                std::cout << "Node ID: " << item.first << " Frequency: " << item.second << "\n";
-                candidateNodes.push_back(item.first);
-            }
-        }
-
-        return { candidateNodes, threshold, commattr };
-    } else {
-        built.insert(targetNodeID);
-        std::cout << "Current built set contains the following nodes: " << std::endl;
-        if (built.empty()) {
-            std::cout << "Built set is currently empty." << std::endl;
-        } else {
-            for (const int& node : built) {
-                std::cout << "Node ID: " << node << std::endl;
-            }
-        }
-        return { {}, 0, {} };
-    }
-}
-
-bool Kcore::isKCore(int k, std::vector<int>& nodes) { 
+bool Kcore::isKCore(int k, std::vector<int>& nodes) {
     std::unique_ptr<Graph> subgraph = std::make_unique<Graph>();
 
     bool queryNodeInSubgraph = false;
@@ -951,12 +763,13 @@ bool Kcore::isKCore(int k, std::vector<int>& nodes) {
         for (size_t j = i + 1; j < nodes.size(); ++j) {
             int nextNode = nodes[j];
 
+            // 检查 nextNode 是否存在于 neighbors 中
             if (std::find(neighbors.begin(), neighbors.end(), nextNode) != neighbors.end()) {
                 subgraph->addEdge(node, nextNode);
-                std::cerr << "nextNode " << nextNode << " is a neighbor of " << node << std::endl;
+                //mi std::cerr << "nextNode " << nextNode << " is a neighbor of " << node << std::endl;
             }
             else {
-                std::cerr << "Warning: nextNode " << nextNode << " is not a neighbor of " << node << std::endl;
+                //mi std::cerr << "Warning: nextNode " << nextNode << " is not a neighbor of " << node << std::endl;
             }
         }
     }
@@ -987,7 +800,6 @@ std::unordered_set<int> Kcore::getNodesWithAttribute(const std::string& attribut
     }
 }
 
-// read attr map
 void Kcore::read_attrmap(const std::string& file_path) {
     std::ifstream file(file_path);
     if (!file.is_open()) {
@@ -999,44 +811,50 @@ void Kcore::read_attrmap(const std::string& file_path) {
     std::string line;
 
     while (std::getline(file, line)) {
-        if (line.empty()) continue;
+        if (line.empty()) continue; // 跳过空行
 
+        // 去掉行首尾空格
         line.erase(0, line.find_first_not_of(" \t"));
         line.erase(line.find_last_not_of(" \t") + 1);
 
+        // 检查是否包含 ':'，确保格式正确
         size_t colonPos = line.find(':');
-        if (colonPos == std::string::npos) continue;
+        if (colonPos == std::string::npos) continue; // 如果没有 ':'，跳过该行
 
-        std::string key = line.substr(0, colonPos);
-        std::string values_str = line.substr(colonPos + 1);
+        std::string key = line.substr(0, colonPos); // 提取 key
+        std::string values_str = line.substr(colonPos + 1); // 提取 values 部分
 
+        // 去掉 key 和 values_str 的首尾空格
         key.erase(0, key.find_first_not_of(" \t"));
         key.erase(key.find_last_not_of(" \t") + 1);
         values_str.erase(0, values_str.find_first_not_of(" \t"));
         values_str.erase(values_str.find_last_not_of(" \t") + 1);
 
-        std::set<int> values;
+        // 分割 values_str 并解析为整数（以空格分隔）
+        std::unordered_set<int> values;
         std::istringstream values_iss(values_str);
         std::string value;
         while (values_iss >> value) {
             try {
-                values.insert(std::stoi(value));
+                values.insert(std::stoi(value)); // 插入整数
             } catch (const std::exception& e) {
                 std::cerr << "Warning: Invalid value '" << value << "' in file." << std::endl;
                 continue;
             }
         }
 
-        if (key == "retrieval" || key == "shape") {
-            std::cerr << "Debug - Key: " << key << std::endl;
-            std::cerr << "Debug - Raw Line: " << line << std::endl;
-            std::cerr << "Debug - Values: ";
-            for (const auto& val : values) {
-                std::cerr << val << " ";
-            }
-            std::cerr << std::endl;
-        }
+        // // 调试输出针对 "retrieval" 和 "shape"
+        // if (key == "retrieval" || key == "shape") {
+        //     std::cerr << "Debug - Key: " << key << std::endl;
+        //     std::cerr << "Debug - Raw Line: " << line << std::endl;
+        //     std::cerr << "Debug - Values: ";
+        //     for (const auto& val : values) {
+        //         std::cerr << val << " ";
+        //     }
+        //     std::cerr << std::endl;
+        // }
 
+        // 插入 attr_map
         attr_map[key] = values;
     }
 
@@ -1051,34 +869,38 @@ void Kcore::read_treeIndex(const std::string& file_path) {
     }
 
     std::string line;
-    std::stack<std::pair<int, TNode*>> nodeStack;
-    root = nullptr;
+    std::stack<std::pair<int, TNode*>> nodeStack; // 用于维护节点层级关系，存储缩进和节点指针
+    root = nullptr; // 树的根节点
 
-    const int INDENT_UNIT = 2;
+    const int INDENT_UNIT = 2; // 定义每一级缩进的空格数
 
     while (std::getline(file, line)) {
-        if (line.empty()) continue;
+        if (line.empty()) continue; // 跳过空行
 
+        // 计算当前行的缩进级别
         int indentLevel = 0;
         while (indentLevel < line.size() && line[indentLevel] == ' ') {
             indentLevel++;
         }
-        indentLevel /= INDENT_UNIT;
+        indentLevel /= INDENT_UNIT; // 将缩进级别转换为逻辑层级
 
+        // 去除行中的缩进部分
         line = line.substr(indentLevel * INDENT_UNIT);
 
+        // 解析行内容
         std::istringstream iss(line);
         std::string key;
         int core = -1;
         int size = 0;
-        std::set<int> nodeSet;
+        std::unordered_set<int> nodeSet;
 
+        // 提取 k 和 size 的值，以及节点集合
         if (std::getline(iss, key, '=') && key == "k") {
-            iss >> core;
-            iss.ignore(20, ' ');
+            iss >> core; // 提取 k 值
+            iss.ignore(20, ' '); // 跳过空格
 
             if (std::getline(iss, key, '=') && key == "size") {
-                iss >> size;
+                iss >> size; // 提取 size 值
                 iss.ignore(20, ':'); // 跳过 " nodes:"
 
                 // 提取节点集合
@@ -1091,15 +913,16 @@ void Kcore::read_treeIndex(const std::string& file_path) {
         }
 
         // 创建当前节点
-        TNode* currentNode = new TNode(core);
+        TNode* currentNode = new TNode(core, nullptr);
         currentNode->setNodeSet(nodeSet);
 
         // 更新索引表
         for (int id : nodeSet) {
-            nodeIndex[id] = currentNode; // 每个 nodeID 映射到当前 TNode
+            nodeIndex[id] = currentNode;
         }
 
-        // 如果是根节点
+        buildInvertedIndex(currentNode);
+
         if (nodeStack.empty()) {
             root = currentNode; // 设置根节点
             nodeStack.push({ indentLevel, currentNode });
@@ -1112,7 +935,10 @@ void Kcore::read_treeIndex(const std::string& file_path) {
 
             // 添加当前节点为父节点的子节点
             if (!nodeStack.empty()) {
-                nodeStack.top().second->getChildList().push_back(currentNode);
+                // nodeStack.top().second->getChildList().push_back(currentNode);
+                TNode* parentNode = nodeStack.top().second;
+                parentNode->getChildList().push_back(currentNode);
+                currentNode->setParent(parentNode);
             }
 
             // 将当前节点加入栈
@@ -1120,17 +946,45 @@ void Kcore::read_treeIndex(const std::string& file_path) {
         }
     }
 
-    file.close();
+    // std::unordered_map<int, TNode*> ancestorCorenessMap;
+    // precomputeAncestorCoreness(root, ancestorCorenessMap);
+    // aggregateNodeSetBottomUp(root);
 
+    file.close();
 }
 
-const std::set<int>& Kcore::getSubtreeNodeSet(int targetID) const {
-    TNode* targetNode = nodeIndex.at(targetID);
-    const std::set<int>& ret= targetNode->getCoreSet();
-    return ret;
+void Kcore::buildInvertedIndex(TNode* currentNode){
+    if (!currentNode) return;
+
+    const std::unordered_set<int>& nodeSet = currentNode->getNodeSet();
+    auto& invertedIndex = currentNode->getInvertedIndex();
+
+    for (int nodeId : nodeSet) {
+        std::vector<std::string> nodeAttributes(attrs(nodeId).begin(), attrs(nodeId).end());
+
+        for (const std::string& attribute : nodeAttributes) {
+            invertedIndex[attribute].push_back(nodeId);
+        }
+    }
+}
+
+void Kcore::collectTreeNodes(TNode* root, std::vector<TNode *>& subtreeNodes, std::unordered_set<TNode*>& visited) {
+    // if (root == nullptr) {
+    //     return;
+    // }
+    
+    if (!root || visited.count(root)) {
+        return;
+    }
+    visited.insert(root);
+
+    subtreeNodes.push_back(root);
+
+    for (TNode* child : root->getChildList()){
+        collectTreeNodes(child, subtreeNodes, visited);
+    }
 }
 
 void Kcore::display() {
-    // display函数的具体实现
+    
 }
-
