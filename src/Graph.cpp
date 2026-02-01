@@ -283,19 +283,16 @@ void Graph::load_graph(std::string data_path) {
     std::string line;
 
     while (std::getline(infile, line)) {
-        // �Ƴ����е� # ����
+
         line.erase(std::remove(line.begin(), line.end(), '#'), line.end());
 
         std::istringstream iss(line);
         int num1, num2;
 
-        // ���Զ�ȡ��������
         if (!(iss >> num1 >> num2)) {
             std::cerr << "Error reading line: " << line << std::endl;
-            continue; // ������ʽ����ȷ����
+            continue;
         }
-
-        // ��ȷ��ȡʱ��������Щ����
         add_edge(num1, num2);
     }
 
