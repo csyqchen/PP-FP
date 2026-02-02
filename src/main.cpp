@@ -15,12 +15,12 @@ int main() {
     std::string year = "2013";
 
     cout << "Loading public graph..." << endl;
-    graph->load_graph("./" + year + "/public_graph_" + year + ".txt");
-    graph->load_attribute("./" + year + "/public_attribute_" + year + ".txt");
+    graph->load_graph("test/public_graph_" + year + ".txt");
+    graph->load_attribute("test/public_attribute_" + year + ".txt");
     cout << "Public graph loaded." << endl;
 
     Kcore* kcore = new Kcore(graph);
-    kcore->read_treeIndex("./" + year + "/tree_index_" + year + ".txt");
+    kcore->read_treeIndex("test/tree_index_" + year + ".txt");
 
     vector<int> k_list = {3};
 
@@ -28,7 +28,7 @@ int main() {
         cout << "Processing k = " << k << endl;
 
         ofstream fp_out(
-            "./" + year + "/node_output.txt");
+            "test/node_output.txt");
 
         // write header
         fp_out << "query_node\t"
@@ -40,7 +40,7 @@ int main() {
         //     "ICDE_revision/" + year + "/k" + to_string(k) + "/improve/ab2/one_node.txt");
 
         // query list can be read from a file if needed
-        ifstream qfile("./" + year + "/node.txt");
+        ifstream qfile("test/node.txt");
         int q;
         
         while (qfile >> q) {
@@ -51,8 +51,8 @@ int main() {
             // PP-FP-tree querying
             auto [fp_time, fp_attr, fp_comm, fp_iter] =
                 kcore->fptree(
-                    "./" + year + "/index/fp_tree_output_" + to_string(q) + ".txt",
-                    "./" + year + "/output_fp_" + to_string(q) + ".txt"
+                    "test/fp_tree_output_" + to_string(q) + ".txt",
+                    "test/output_fp_" + to_string(q) + ".txt"
                 );
 
             fp_out << q << "\t"
@@ -82,3 +82,4 @@ int main() {
     delete graph;
     return 0;
 }
+
