@@ -1,4 +1,4 @@
-#ifndef KCORE_H 
+#ifndef KCORE_H
 #define KCORE_H
 
 #include <vector>
@@ -9,19 +9,21 @@
 #include <queue>
 #include <ctime>
 #include "Graph.h"
+#include "Utils.h"
 
-// TreeNode ��Ķ���
 struct TreeNode {
-    int coreness;  // ��ǰ�ڵ�� k-core ֵ
-    std::vector<int> nodes;  // �����Ľڵ㼯��
-    std::vector<TreeNode*> children;  // �ӽڵ��б�
+    int coreness;
+    std::vector<int> nodes;
+    std::vector<TreeNode*> children;
 
     TreeNode(int core) : coreness(core) {}
 };
 
 class Kcore {
 public:
-    std::set<int> built; // ��ѯ�� conditional tree ���޷����� k-core �Ľ�㼯
+    std::set<int> built;
+
+    std::vector<std::pair<std::set<std::string>, std::set<int>>> attrIntersect;
 
     struct Node {
         int id;
@@ -29,7 +31,8 @@ public:
         int totalCount;
         int level;
         std::set<std::string> attributes;
-        std::set<int> branches; // ��¼��������ķ�֧
+        // std::unordered_set<std::string> attributes;
+        std::set<int> branches;
     };
 
     // Constructors
@@ -60,8 +63,8 @@ public:
     std::vector<std::vector<T>> combinations(const std::vector<T>& arr, int k);
 
     // Baselines
-    double baseline1(std::ofstream& output_file, size_t& success_d, size_t& community);
-    double baseline2(std::ofstream& output_file, size_t& success_d, size_t& community);
+    double baseline1(std::ofstream& output_file, size_t& success_d, size_t& community, size_t& iteration_count);
+    double baseline2(std::ofstream& output_file, size_t& success_d, size_t& community, size_t& iteration_count);
     void baseline3();
 
     // Index
@@ -69,7 +72,6 @@ public:
 
     void printTree(TreeNode* node, int depth = 0) const;
 
-    // �����ĺ������������ڽ�����ӡ���ļ�
     void printTreeToFile(TreeNode* node, std::ofstream& outFile, int depth = 0) const;
 
     int getNodeCoreness(int node) const;
@@ -77,25 +79,33 @@ public:
     // Tree and Inverted Index Access Functions
     TreeNode* getTreeIndexRoot() const;
 
-    // �������µĺ��������������Ե����������������������ܽ��
-    // TNode* buildAttributeIndexAndTree(const std::string& attributeOutputFilePath, const std::string& treeOutputFilePath);  
+    // TNode* buildAttributeIndexAndTree(const std::string& attributeOutputFilePath, const std::string& treeOutputFilePath);
     void buildAttributeIndex();
     void handleALevel(int startIdx, int endIdx, int curCoreNum);
     int* getCore();
     TNode** getInvert();
     void traverse(TNode* root, std::ofstream& outFile);
+    void buildInvertedIndex(TNode* currentNode);
 
     std::unordered_set<int> getNodesWithAttribute(const std::string& attribute) const;
 
+    //ablation study1
+    std::tuple<double, int, int, int> ablation1(const std::string& outputFileName);
+    std::tuple<double, int, int, int> ablation2(const std::string& fptreeFile, const std::string& outputFileName);
 
     // Our method
     bool isKCore(int k, std::vector<int>& nodes);
-    std::tuple<double, int, int> fptree(const std::string& fptreeFile, const std::string& outputFileName, std::vector<std::string>& result);
-    std::vector<std::vector<Node>> getConditionalPatternBase(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches);
-    std::tuple<std::vector<int>, int, std::set<std::string>> buildConditionalFPTree(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches, int totalMaxAttributes);
+    std::tuple<double, int, int, int> fptree(const std::string& fptreeFile, const std::string& outputFileName);
+    // std::vector<std::vector<Node>> getConditionalPatternBase(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches);
+
+    // typedef std::unordered_map<std::set<int>, std::set<std::string>> PatternData;
+
+    std::vector<std::pair<std::set<int>, std::set<std::string>>> getConditionalPatternBase(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches, int totalMaxAttributes);
+
+    // std::tuple<std::vector<int>, int, std::set<std::string>> buildConditionalFPTree(int targetNodeID, int rootNode, const std::vector<std::vector<Node>>& branches, int totalMaxAttributes);
     void read_attrmap(const std::string& file_path);
     void read_treeIndex(const std::string& file_path);
-    bool validateCandidateSet(
+    std::pair<bool, int> validateCandidateSet(
         const std::vector<int>& selectedNodes,
         const std::set<std::string>& commattr,
         Graph* graph,
@@ -103,13 +113,25 @@ public:
         int k,
         const std::string& outputFileName
     );
-    const std::set<int>& getSubtreeNodeSet(int targetID) const;
-    std::set<int> collectSubtreeNodeSet(TNode* node);
 
+    std::pair<bool, int> validateCandidateSetAblation(
+        const std::vector<int>& selectedNodes,
+        const std::set<std::string>& commattr,
+        Graph* graph,
+        int v,
+        int k,
+        const std::string& outputFileName
+    );
+
+    const std::unordered_set<int>& getSubtreeNodeSet(int targetID, int k) const;
+    std::set<int> collectSubtreeNodeSet(TNode* node);
+    void precomputeAncestorCoreness(TNode* node, std::unordered_map<int, TNode*> ancestorMap);
+    void aggregateNodeSetBottomUp(TNode* node);
+
+    void collectTreeNodes(TNode* root, std::vector<TNode *>& subtreeNodes,  std::unordered_set<TNode*>& visited);
     // Display results
     void display();
 
-    //icde decompose
     int* decompose();
     int obtainMaxCore();
     int* obtainReverseCoreArr();
@@ -124,24 +146,21 @@ public:
     int* coreReverseFang = nullptr;
     int* deg = nullptr;
     //index
-    int* core = nullptr; // Equivalent to int[] core in Java
-    //int n = -1;
-    //int* coreReverseFang = nullptr; // Equivalent to int[] coreReverseFang in Java
-    UNode** unodeArr; // Array of UNode objects
-    TNode** invert; // Array of TNode objects
-    std::set<TNode*> restNodeSet; // Equivalent to Set<TNode> in Java
-    UnionFind* uf = nullptr; // Pointer to UnionFind object
+    int* core = nullptr;
+    
+    UNode** unodeArr;
+    TNode** invert;
+    std::set<TNode*> restNodeSet;
+    UnionFind* uf = nullptr;
 
-    // Tree and Inverted Index Member Variables
-    TNode* root;  // ��״�������ڵ�
-    std::unordered_map<int, int> nodeToCoreIndex;  // ��������
-    std::unordered_map<std::string, std::unordered_set<int>> attributeToNodes;  // ���Ե��ڵ�ĵ�������
+    TNode* root;
+    std::unordered_map<int, int> nodeToCoreIndex;
+    std::unordered_map<std::string, std::unordered_set<int>> attributeToNodes;
 
-    // ������Ա���������ڴ洢�����Ľڵ�
-    std::vector<int> sortedNodes;  // ���������Ľڵ�˳�������Ե����ϵ�������
+    std::vector<int> sortedNodes;
 
-    std::unordered_map<std::string, std::set<int>> attr_map;
-    std::unordered_map<int, TNode*> nodeIndex; // �ڵ�������
+    std::unordered_map<std::string, std::unordered_set<int>> attr_map;
+    std::unordered_map<int, TNode*> nodeIndex;
 
 };
 
