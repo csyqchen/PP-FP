@@ -1,0 +1,5 @@
+5 (3, 3) {Core, Database, Efficient}
+  7 (3, 3) {Core, Database, Efficient}
+    8 (3, 3) {Core, Database, Efficient}
+      6 (2, 2) {Database, Efficient}
+        9 (2, 2) {Database, Efficient}

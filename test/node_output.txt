@@ -1,0 +1,2 @@
+query_node	time	community_size	attribute_size
+5	0.000317	5	2

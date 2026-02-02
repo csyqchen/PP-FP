@@ -1,0 +1,4 @@
+k=0 size=1 nodes: 13
+  k=1 size=5 nodes: 1 2 3 4 5
+    k=2 size=4 nodes: 6 7 8 9
+  k=2 size=3 nodes: 10 11 12
