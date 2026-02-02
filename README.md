@@ -1,7 +1,11 @@
 # PP-FP search algorithm
 **Introduction**
 
-The provided code can be compiled with g++. Ensure all input files are correctly placed in the working directory before execution. The dataset provided is the example shown in Fig. 1 of the paper.
+The provided code can be compiled with g++. Ensure all input files are correctly placed in the working directory before execution. The dataset provided is the example shown in the following Fig. 1.
+<p align="center">
+  <img src="test/example.pdf" width="600">
+</p>
+
 
 **Input:**
 
