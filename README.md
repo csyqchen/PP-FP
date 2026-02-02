@@ -7,6 +7,19 @@ The provided code can be compiled with g++. Ensure all input files are correctly
 </p>
 
 
+
+**Experimental Setup (Reproducibility)**
+
+All experiments were conducted on a machine equipped with:
+
+- CPU: Dual AMD EPYC 7742 processors (2 × 64 cores, 2.25GHz)
+- Memory: 2 TB RAM
+- Programming language: C++ (C++17)
+- Compiler: g++
+
+Unless otherwise specified, the community coreness parameter is set to k = 3 in all experiments.
+This setup is consistent with the experimental description in Section VII of the paper.
+
 **Input:**
 
 **1.	public_graph.txt**
@@ -38,15 +51,7 @@ The provided code can be compiled with g++. Ensure all input files are correctly
 #xxx# #8# #Core;Efficient;#
 #xxx# #9# #Efficient;#
 ```
-**4.	attribute_index.txt**
-- Stores the attribute index of the public graph.
-- Each line is a research interest with corresponding authors in the public graph. (research_interest, author_1, author_2, ...)
-- Sample:
-```html
-Database: 2 5 6 7 8 9
-Embedding: 1 2 3 4 11 13
-```
-**5.	tree_index.txt**
+**4.	tree_index.txt**
 - Stores the coreness index of the public graph.
 - Each line is a node set with coreness=k. (coreness, author_size, author_1, author_2, ...)
 - Sample:
@@ -54,30 +59,56 @@ Embedding: 1 2 3 4 11 13
 k=0 size=1 nodes: 13
   k=1 size=4 nodes: 1 2 3 5
 ```
+**5.	attr_tree_index.txt**
+- Stores the attribute-based coreness index of the public graph.
+- Each block corresponds to a k-core, listing the nodes in the k-core and the keywords associated with these nodes.
+- This index is used to efficiently retrieve candidate nodes sharing common attributes under k-core constraints.
+- The first line specifies the coreness value `k`, the number of nodes in the k-core, and the node IDs.
+- The following lines list attributes and the corresponding nodes containing each attribute.
+- Sample:
+```html
+k=0 size=1 nodes: 13
+keywords:
+Embedding: 13
+  k=1 size=5 nodes: 1 2 3 4 5
+  keywords:
+  Database: 2 5
+  Embedding: 1 2 3 4
+  Network: 4
+  Search: 3
+  Dynamic: 1
+```
 **6.	fp_tree_input_q.txt**
 - Contains the PP-FP-tree index generated for a query author q.
 - Sample: 
 ```html
-query node (0, 0) {}
+5 (3, 3) {Core, Database, Efficient}
   7 (3, 3) {Core, Database, Efficient}
-   8 (3, 3) {Core, Database, Efficient}
+    8 (3, 3) {Core, Database, Efficient}
 ```
 **Output:**
 
-**1.	Output_k_fp_q.txt**
+**1.	node_output.txt**
+- Provides the following details: the query node, running time, the community size, the attribute size;
+- Sample:
+```html
+query_node	  time	          community_size	      attribute_size
+5	            0.000317	      5	                    2
+
+```
+**2.	Output_fp_q.txt**
 - Provides the following details:
   
    (1) List the authors in the k-core community related to the query author q;
 
-   (2) Size of the k-core community;
-
-   (3) Maximum of common attributes shared by the community;
-   
-   (4) Query duration time.
+   (2) The common attributes of the k-core community.
 - Sample:
 ```html
-Community Node ID: 9 8 7 6 5 
-Community Size: 5
-Max attribute: 2
-Query Duration: 0.000289 seconds 
+Node ID: 9
+Node ID: 8
+Node ID: 7
+Node ID: 5
+Node ID: 6
+Attributes:
+Database Efficient 
 ```
