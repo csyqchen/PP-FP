@@ -62,9 +62,7 @@ k=0 size=1 nodes: 13
 **5.	attr_tree_index.txt**
 - Stores the attribute-based coreness index of the public graph.
 - Each block corresponds to a k-core, listing the nodes in the k-core and the keywords associated with these nodes.
-- This index is used to efficiently retrieve candidate nodes sharing common attributes under k-core constraints.
-- The first line specifies the coreness value `k`, the number of nodes in the k-core, and the node IDs.
-- The following lines list attributes and the corresponding nodes containing each attribute.
+- The first line specifies the coreness value `k`, the number of nodes in the k-core, and the node IDs, and the following lines list attributes and the corresponding nodes containing each attribute.
 - Sample:
 ```html
 k=0 size=1 nodes: 13
