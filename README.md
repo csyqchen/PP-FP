@@ -91,7 +91,7 @@ Embedding: 13
 - Sample:
 ```html
 query_node	  time (seconds)	          community_size	      attribute_size
-5	         0.000317	      5	                    2
+5	           0.000317	                5	                    2
 
 ```
 **2.	Output_fp_q.txt**
