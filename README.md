@@ -90,8 +90,8 @@ Embedding: 13
 - Provides the following details: the query node, running time, the community size, the attribute size;
 - Sample:
 ```html
-query_node	  time	          community_size	      attribute_size
-5	            0.000317	      5	                    2
+query_node	  time (seconds)	          community_size	      attribute_size
+5	         0.000317	      5	                    2
 
 ```
 **2.	Output_fp_q.txt**
