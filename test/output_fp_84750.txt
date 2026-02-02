@@ -1,6 +1,0 @@
-Node ID: 404864
-Node ID: 134166
-Node ID: 84750
-Node ID: 134074
-Attributes:
-answer programming rules set using 
